@@ -61,6 +61,8 @@ Commit only after the relevant verification command passes.
 
 ## Phase 0 — Repo Hygiene And Decision Lock
 
+Status: Done on 18 May 2026.
+
 Goal: make sure we are building the right thing before scaffolding.
 
 Tasks:
@@ -77,7 +79,20 @@ Acceptance criteria:
 - Open questions for MVP are answered.
 - No code implementation starts before the MVP boundary is clear.
 
+Decision lock:
+
+- First supported production target: PostgreSQL running in Docker.
+- First external storage target: S3-compatible object storage, specifically Cloudflare R2.
+- Storage configuration remains per target, so one Cloudflare account with multiple buckets and separate Cloudflare accounts per project are both supported.
+- Encryption default: `age`; production database backups must be encrypted before external upload.
+- First notification channel: Telegram.
+- Installation model: standalone runner installed on the target VPS, not an app dependency inside Maintana, Orymu backend, Kevly, or future projects.
+- First rollout target: Maintana production.
+- Product boundary: Phase 2 starts with typed configuration and `doctor`; no real backup side effects are introduced before the config foundation is validated.
+
 ## Phase 1 — Project Harness
+
+Status: Done on 18 May 2026.
 
 Goal: create a strict engineering harness before implementation.
 
@@ -177,6 +192,8 @@ The temporary smoke files were removed after the negative test, and the clean ga
 
 ## Phase 2 — Config Foundation
 
+Status: Done on 18 May 2026.
+
 Goal: build typed, validated configuration before any backup behavior.
 
 Tasks:
@@ -213,6 +230,23 @@ Acceptance criteria:
 - Unit tests cover valid config, invalid config, duplicate target ids, and env reference resolution.
 - Secrets are redacted in all printed config/debug output.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+node dist/cli.js doctor --config config/targets.example.yaml
+```
+
+Result:
+
+- strict YAML config loading is implemented;
+- Zod schema rejects invalid config shape and duplicate target ids;
+- env reference resolution reports missing required values for enabled targets;
+- disabled targets can validate without production secrets;
+- config preview redaction masks secret-shaped keys;
+- `doctor` validates config shape without running backup side effects;
+- example config validates as a disabled Maintana target.
 
 ## Phase 3 — CLI Foundation
 

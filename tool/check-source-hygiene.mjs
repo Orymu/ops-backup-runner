@@ -5,7 +5,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const ignoredDirs = new Set([".git", "node_modules", "dist", "coverage"]);
-const allowedProcessEnvFiles = new Set([]);
+const allowedProcessEnvFiles = new Set(["src/config/env.ts"]);
 
 const fail = (messages) => {
   process.stderr.write(

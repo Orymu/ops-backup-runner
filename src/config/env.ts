@@ -1,0 +1,107 @@
+import type { BackupRunnerConfig, BackupTarget } from "./types.js";
+
+export interface EnvReference {
+  name: string;
+  owner: string;
+  requiredForEnabledTarget: boolean;
+}
+
+export interface EnvResolutionIssue {
+  envName: string;
+  owner: string;
+  message: string;
+}
+
+export interface EnvResolutionResult {
+  ok: boolean;
+  issues: EnvResolutionIssue[];
+}
+
+const addEnvReference = (
+  references: EnvReference[],
+  name: string | undefined,
+  owner: string,
+  requiredForEnabledTarget: boolean
+): void => {
+  if (name === undefined) return;
+  references.push({ name, owner, requiredForEnabledTarget });
+};
+
+export const getTargetEnvReferences = (
+  config: BackupRunnerConfig,
+  target: BackupTarget
+): EnvReference[] => {
+  const references: EnvReference[] = [];
+  const encryption = target.encryption ?? config.defaults?.encryption;
+  const notifications = target.notifications ?? config.defaults?.notifications;
+
+  addEnvReference(
+    references,
+    target.dumper.passwordEnv,
+    `${target.id}.dumper.passwordEnv`,
+    false
+  );
+
+  addEnvReference(
+    references,
+    target.storage.accessKeyIdEnv,
+    `${target.id}.storage.accessKeyIdEnv`,
+    true
+  );
+  addEnvReference(
+    references,
+    target.storage.secretAccessKeyEnv,
+    `${target.id}.storage.secretAccessKeyEnv`,
+    true
+  );
+
+  if (encryption?.type === "age") {
+    addEnvReference(
+      references,
+      encryption.recipientEnv,
+      `${target.id}.encryption.recipientEnv`,
+      true
+    );
+  }
+
+  if (notifications?.telegram?.enabled === true) {
+    addEnvReference(
+      references,
+      notifications.telegram.botTokenEnv,
+      `${target.id}.notifications.telegram.botTokenEnv`,
+      true
+    );
+    addEnvReference(
+      references,
+      notifications.telegram.chatIdEnv,
+      `${target.id}.notifications.telegram.chatIdEnv`,
+      true
+    );
+  }
+
+  return references;
+};
+
+export const resolveTargetEnvReferences = (
+  config: BackupRunnerConfig,
+  target: BackupTarget,
+  env: Record<string, string | undefined> = process.env
+): EnvResolutionResult => {
+  if (!target.enabled) {
+    return { ok: true, issues: [] };
+  }
+
+  const issues = getTargetEnvReferences(config, target)
+    .filter((reference) => reference.requiredForEnabledTarget)
+    .filter((reference) => env[reference.name] === undefined)
+    .map((reference) => ({
+      envName: reference.name,
+      owner: reference.owner,
+      message: `Missing required environment variable ${reference.name} for ${reference.owner}`,
+    }));
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+};
