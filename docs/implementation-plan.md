@@ -132,6 +132,49 @@ Acceptance criteria:
 - Repo has no production logic yet.
 - README points to proposal and implementation plan.
 
+### Phase 1 Harness Smoke Evidence
+
+Status: Passed on 18 May 2026.
+
+Verification executed:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- format, lint, type-check, tests, and build passed;
+- architecture harness passed;
+- source hygiene harness passed;
+- docs harness passed;
+- env harness passed;
+- project-map harness passed;
+- security harness passed;
+- commit message harness passed.
+
+Negative smoke tests executed:
+
+```bash
+pnpm harness:commit -- --message "bad commit message"
+```
+
+Expected failure confirmed:
+
+- invalid commit message was rejected with the required `type(scope): message` format and allowed commit types.
+
+Temporary architecture violation created locally:
+
+```text
+src/core/harness-smoke.ts -> src/storage/harness-smoke.ts
+```
+
+Expected failure confirmed:
+
+- architecture harness rejected `src/core/**` importing runtime adapter code from `src/storage/**`.
+
+The temporary smoke files were removed after the negative test, and the clean gate passed again. The harness is ready to guard Phase 2 product implementation.
+
 ## Phase 2 — Config Foundation
 
 Goal: build typed, validated configuration before any backup behavior.
