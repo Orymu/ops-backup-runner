@@ -1,0 +1,619 @@
+# Ops Backup Runner — Implementation Plan
+
+Status: Draft for execution  
+Repository: `Orymu/ops-backup-runner`  
+Primary target for first rollout: Maintana production  
+Source proposal: `docs/reusable-backup-runner-proposal.md`
+
+## Goal
+
+Build a reusable, production-grade backup runner that can be installed on VPS servers and back up multiple deployed systems.
+
+The first production milestone is:
+
+```text
+Maintana PostgreSQL Docker container
+  -> pg_dump custom format
+  -> gzip
+  -> age encrypt
+  -> upload to R2/S3
+  -> write manifest
+  -> verify upload
+  -> retention prune
+  -> Telegram failure alert
+  -> restore/list/verify commands
+```
+
+The design must remain reusable for Orymu backend, Kevly, and future projects.
+
+## Non-Negotiable Rules
+
+- Do not couple the runner to Maintana internals.
+- Do not require installing the runner as an app dependency.
+- Do not store raw secrets in YAML config.
+- Do not upload unencrypted production database backups to external storage.
+- Do not implement backup without restore/list/verify commands.
+- Do not silently skip enabled targets.
+- Do not print database passwords, R2 secrets, Telegram tokens, or age private keys.
+- Do not claim production readiness without a restore verification.
+
+## Delivery Strategy
+
+Each phase should be small enough to review independently.
+
+Preferred branch flow:
+
+```text
+master
+  <- feat/project-harness
+  <- feat/config-foundation
+  <- feat/local-pipeline
+  <- feat/postgres-docker-dumper
+  <- feat/s3-storage
+  <- feat/age-encryption
+  <- feat/retention
+  <- feat/notifications
+  <- feat/systemd-install
+  <- feat/maintana-rollout
+```
+
+Commit only after the relevant verification command passes.
+
+## Phase 0 — Repo Hygiene And Decision Lock
+
+Goal: make sure we are building the right thing before scaffolding.
+
+Tasks:
+
+- Review `docs/reusable-backup-runner-proposal.md`.
+- Confirm first supported production target is PostgreSQL in Docker.
+- Confirm first external storage target is S3-compatible storage, specifically Cloudflare R2.
+- Confirm encryption default is `age`.
+- Confirm first notification channel is Telegram.
+- Confirm the runner is installed on target VPS, not inside each app repo.
+
+Acceptance criteria:
+
+- Open questions for MVP are answered.
+- No code implementation starts before the MVP boundary is clear.
+
+## Phase 1 — Project Harness
+
+Goal: create a strict engineering harness before implementation.
+
+Tasks:
+
+- Add `package.json`.
+- Add TypeScript strict config.
+- Add source structure:
+
+```text
+src/
+  cli.ts
+  config/
+  core/
+  commands/
+  dumpers/
+  storage/
+  encryption/
+  notifications/
+```
+
+- Add test stack with Vitest.
+- Add linting and formatting.
+- Add `pnpm verify`.
+- Add GitHub Actions CI running `pnpm verify`.
+- Add `.env.example`.
+- Add `.gitignore`.
+- Add README quickstart section.
+- Add PR template.
+- Add Conventional Commit documentation.
+
+Recommended scripts:
+
+```json
+{
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit",
+    "verify": "pnpm format:check && pnpm lint && pnpm type-check && pnpm test && pnpm build"
+  }
+}
+```
+
+Acceptance criteria:
+
+- `pnpm verify` passes.
+- CI runs `pnpm verify`.
+- Repo has no production logic yet.
+- README points to proposal and implementation plan.
+
+## Phase 2 — Config Foundation
+
+Goal: build typed, validated configuration before any backup behavior.
+
+Tasks:
+
+- Add YAML config loader.
+- Add Zod config schema.
+- Add env reference resolution helper.
+- Add redacted config preview helper.
+- Add target selection helper.
+- Add initial `doctor` command skeleton.
+- Add `config/targets.example.yaml`.
+
+Config must support:
+
+- multiple targets;
+- per-target dumper;
+- per-target storage;
+- per-target retention override;
+- default encryption;
+- default notification policy;
+- env var references for secrets.
+
+Example validation behavior:
+
+- missing config path -> clear error;
+- duplicate target ids -> clear error;
+- enabled target with missing env reference -> doctor fails;
+- unknown dumper/storage/encryption type -> config load fails;
+- disabled target can have incomplete credentials but should be reported as disabled.
+
+Acceptance criteria:
+
+- `backup-runner doctor --config config/targets.example.yaml` can validate static config shape.
+- Unit tests cover valid config, invalid config, duplicate target ids, and env reference resolution.
+- Secrets are redacted in all printed config/debug output.
+- `pnpm verify` passes.
+
+## Phase 3 — CLI Foundation
+
+Goal: create stable command interfaces with no real backup side effects yet.
+
+Tasks:
+
+- Add CLI command parser.
+- Add commands:
+  - `doctor`;
+  - `backup`;
+  - `list`;
+  - `verify`;
+  - `restore`;
+  - `prune`.
+- Add `--config`.
+- Add `--json` output support for relevant commands.
+- Add `--dry-run` where applicable.
+- Add standard process exit codes.
+
+Recommended exit codes:
+
+```text
+0 success
+1 runtime failure
+2 config/usage error
+3 verification failure
+```
+
+Acceptance criteria:
+
+- Every command has help output.
+- Unknown target fails clearly.
+- `backup all --dry-run` lists enabled targets without executing dump/upload.
+- `pnpm verify` passes.
+
+## Phase 4 — Local Backup Pipeline
+
+Goal: prove the core pipeline with fake dumper and local storage.
+
+Tasks:
+
+- Add dumper interface.
+- Add fake/test dumper.
+- Add local storage adapter.
+- Add temp workspace management.
+- Add artifact naming.
+- Add manifest generation.
+- Add gzip compression.
+- Add `backup` command using fake dumper + local storage.
+- Add `list` command for local manifests.
+- Add `restore` command for local artifacts.
+
+Local artifact flow:
+
+```text
+fake readable stream
+  -> gzip
+  -> optional encryption none for dev
+  -> local storage write
+  -> manifest write
+```
+
+Acceptance criteria:
+
+- Can run a local backup with fake dumper.
+- Can list created backup.
+- Can restore created backup to a file.
+- Manifest includes target id, created time, artifact key, size, sha256, compression, encryption, storage metadata.
+- Temp files are cleaned after success and failure.
+- `pnpm verify` passes.
+
+## Phase 5 — PostgreSQL Docker Dumper
+
+Goal: back up Dockerized PostgreSQL databases.
+
+Tasks:
+
+- Add `postgresDocker` dumper.
+- Build safe `docker exec` process invocation.
+- Stream `pg_dump` stdout into pipeline.
+- Capture stderr for failure logs.
+- Support:
+  - container;
+  - database;
+  - username;
+  - format `custom`;
+  - optional docker binary path.
+- Add integration test using a disposable Postgres container if practical.
+- Add `doctor` checks:
+  - docker binary exists;
+  - target container exists;
+  - `pg_dump` command can run.
+
+Dump command shape:
+
+```bash
+docker exec <container> pg_dump \
+  -U <username> \
+  -d <database> \
+  --format=custom \
+  --no-owner \
+  --no-privileges
+```
+
+Acceptance criteria:
+
+- Dump output passes `pg_restore --list`.
+- Failed container/database/user produces clear error.
+- No plaintext dump is left behind after backup.
+- `pnpm verify` passes.
+
+## Phase 6 — S3/R2 Storage Adapter
+
+Goal: support Cloudflare R2 and generic S3-compatible storage.
+
+Tasks:
+
+- Add S3 storage adapter with AWS SDK v3.
+- Resolve per-target storage env values.
+- Implement:
+  - upload object;
+  - head object;
+  - list objects by prefix;
+  - delete object;
+  - download object.
+- Add object metadata where useful:
+  - target id;
+  - backup id;
+  - created at;
+  - sha256.
+- Add upload verification after artifact and manifest upload.
+- Add tests with mocked S3 client.
+
+Must support:
+
+- same R2 account with different buckets;
+- same R2 account with shared bucket and per-project prefixes;
+- different R2 accounts per project;
+- different credentials per project.
+
+Acceptance criteria:
+
+- Adapter can upload/download/head/list/delete using mocked S3 client.
+- Config supports per-target endpoint/bucket/prefix/credentials.
+- `doctor` can validate storage config without printing secrets.
+- `pnpm verify` passes.
+
+## Phase 7 — Age Encryption
+
+Goal: encrypt backups before external upload.
+
+Tasks:
+
+- Add encryption interface.
+- Add `none` encryption for local/dev only.
+- Add `age` encryption adapter.
+- Support age recipient from env.
+- Support age identity path for restore.
+- Add production guard:
+  - external storage + `none` encryption fails unless explicit unsafe override is set.
+- Add restore decrypt path.
+
+Pipeline:
+
+```text
+pg_dump stream
+  -> gzip
+  -> age encrypt
+  -> upload
+```
+
+Restore:
+
+```text
+download
+  -> age decrypt
+  -> gunzip
+  -> output dump file
+```
+
+Acceptance criteria:
+
+- External backup artifact is encrypted.
+- Restore with age identity produces a valid dump.
+- Restore without required identity fails clearly.
+- `none` encryption is blocked for production external storage.
+- `pnpm verify` passes.
+
+## Phase 8 — Retention Engine
+
+Goal: remove old backups safely.
+
+Tasks:
+
+- Add retention policy model:
+  - daily;
+  - weekly;
+  - monthly;
+  - manual.
+- Add manifest parser.
+- Add prune planner.
+- Add `prune --dry-run`.
+- Add deletion execution.
+- Delete only manifest-backed artifact pairs.
+- Never delete unknown objects in Phase 1.
+
+Retention logic:
+
+```text
+list manifests by target/prefix
+group by cadence
+sort by createdAt desc
+keep N according to policy
+delete older artifact + manifest pairs
+```
+
+Acceptance criteria:
+
+- Unit tests cover retention edge cases.
+- Dry-run prints intended deletions without deleting.
+- Unknown objects are reported but not deleted.
+- Prune failure does not mark backup upload as failed if backup already succeeded.
+- `pnpm verify` passes.
+
+## Phase 9 — Verification Commands
+
+Goal: make restore confidence operationally visible.
+
+Tasks:
+
+- Implement `verify <target> --latest`.
+- Download latest artifact.
+- Decrypt if needed.
+- Decompress.
+- For Postgres custom dumps, run:
+
+```bash
+pg_restore --list <dump-file>
+```
+
+- Add checksum verification against manifest.
+- Clean temp files after verification.
+
+Acceptance criteria:
+
+- `verify --latest` fails if no backups exist.
+- `verify --latest` succeeds for valid Postgres custom dump.
+- Corrupted artifact fails checksum or restore-list verification.
+- `pnpm verify` passes.
+
+## Phase 10 — Notifications
+
+Goal: alert operators when backup fails.
+
+Tasks:
+
+- Add notification interface.
+- Add Telegram notifier.
+- Add notification policy:
+  - success optional;
+  - failure enabled by default;
+  - weekly/monthly success optional.
+- Add secret-safe error formatting.
+- Add notification test command or `doctor` check.
+
+Failure message should include:
+
+```text
+[Backup Failed]
+Target: maintana
+Stage: upload
+Time: 2026-05-18 02:00 WIB
+Error: AccessDenied
+Server: orymu-droplet
+```
+
+Acceptance criteria:
+
+- Failed backup sends Telegram alert when configured.
+- Missing Telegram config fails `doctor` if notifications are enabled.
+- Notification failure is logged but does not hide the original backup failure.
+- `pnpm verify` passes.
+
+## Phase 11 — Systemd Install Assets
+
+Goal: make server installation repeatable.
+
+Tasks:
+
+- Add systemd service templates:
+  - daily;
+  - weekly;
+  - monthly.
+- Add install docs.
+- Add production directory layout docs.
+- Add `.env.example` for production.
+- Add `doctor` command to validate installed server environment.
+
+Production layout:
+
+```text
+/opt/orymu/ops-backup-runner/
+  dist/
+  config/
+    targets.yaml
+  secrets/
+  .env
+```
+
+Acceptance criteria:
+
+- Docs explain install path, permissions, and timer activation.
+- Systemd files use `EnvironmentFile`.
+- `Persistent=true` is documented for timers.
+- `pnpm verify` passes.
+
+## Phase 12 — Maintana Production Rollout
+
+Goal: prove production value on the first real system.
+
+Tasks:
+
+- Create or select R2 backup bucket/prefix for Maintana.
+- Create backup R2 credentials.
+- Create age recipient.
+- Install runner on Orymu VPS.
+- Configure Maintana target:
+
+```yaml
+id: maintana
+dumper:
+  type: postgresDocker
+  container: maintana-postgres
+  database: maintana
+  username: maintana
+```
+
+- Run:
+
+```bash
+backup-runner doctor
+backup-runner backup maintana --cadence manual
+backup-runner list maintana
+backup-runner restore maintana --latest --output /tmp/maintana.dump
+pg_restore --list /tmp/maintana.dump
+```
+
+- Enable daily timer.
+- Record runtime evidence.
+
+Acceptance criteria:
+
+- Maintana backup exists in external R2/S3 storage.
+- Manifest exists.
+- Restore artifact passes `pg_restore --list`.
+- Timer is active.
+- Failure notification is tested.
+- Runtime evidence is documented.
+
+## Phase 13 — Orymu Backend And Kevly Rollout
+
+Goal: bring the other current systems under the same backup platform.
+
+Tasks:
+
+- Inspect Orymu backend deployment:
+  - database type;
+  - container name;
+  - database name;
+  - database user;
+  - current backup situation.
+- Inspect Kevly deployment with the same checklist.
+- Add targets.
+- Run `doctor`.
+- Run manual backups.
+- Verify restores.
+- Enable scheduled backup for both.
+
+Acceptance criteria:
+
+- Maintana, Orymu backend, and Kevly each have at least one verified external backup.
+- All three are included in scheduled backups.
+- Target-specific restore notes are documented.
+
+## Phase 14 — Hardening Backlog
+
+Do only after the first production rollout is reliable.
+
+Potential improvements:
+
+- lock file per target to prevent overlapping backups;
+- stale backup alert if latest successful backup is older than threshold;
+- backup health report command;
+- restore into disposable Postgres database;
+- storage cost estimate command;
+- multiple notification channels;
+- MySQL/MariaDB dumper;
+- Postgres URL dumper for managed databases;
+- remote SSH dumper for operator/local mode;
+- GitHub release packaging;
+- binary distribution with `pkg` or similar if useful.
+
+## Verification Matrix
+
+| Phase            | Required Verification                              |
+| ---------------- | -------------------------------------------------- |
+| Harness          | `pnpm verify`, CI green                            |
+| Config           | unit tests for schema/env resolution               |
+| CLI              | command help and invalid target tests              |
+| Local pipeline   | local backup/list/restore smoke                    |
+| Postgres Docker  | `pg_restore --list` on generated dump              |
+| S3/R2            | mocked adapter tests, real R2 smoke before rollout |
+| Age              | encrypted artifact restore smoke                   |
+| Retention        | dry-run and deletion planner tests                 |
+| Notifications    | mocked Telegram tests, real failure alert smoke    |
+| Systemd          | `systemctl status`, timer active                   |
+| Maintana rollout | external object exists, restore verified           |
+
+## First Implementation Cut
+
+The first code milestone should stop at local pipeline:
+
+```text
+Phase 1 - Project Harness
+Phase 2 - Config Foundation
+Phase 3 - CLI Foundation
+Phase 4 - Local Backup Pipeline
+```
+
+This gives us a clean foundation before touching Docker, R2, encryption, or production.
+
+After that, implement production behavior in this order:
+
+```text
+Postgres Docker -> S3/R2 -> age -> retention -> notifications -> systemd -> Maintana rollout
+```
+
+## Current Stop Point
+
+This file is the execution plan. No implementation has started yet.
+
+Next recommended action:
+
+```text
+Start Phase 1 on a feature branch and build the project harness.
+```

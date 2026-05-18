@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+age-identity.txt
+*.dump
+*.dump.gz
+*.dump.gz.age
+*.sql
+*.sql.gz
+*.backup

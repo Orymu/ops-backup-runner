@@ -1,0 +1,33 @@
+{
+  "name": "ops-backup-runner",
+  "version": "0.1.0",
+  "description": "Reusable multi-project backup runner for encrypted database backups, retention, verification, and restore workflows.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "ops-backup-runner": "./dist/cli.js"
+  },
+  "engines": {
+    "node": "22.x",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.33.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit",
+    "verify": "pnpm format:check && pnpm lint && pnpm type-check && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^22.19.1",
+    "eslint": "^9.39.1",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^4.1.0"
+  }
+}
