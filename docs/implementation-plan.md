@@ -600,6 +600,8 @@ Result:
 
 ## Phase 9 — Verification Commands
 
+Status: Done on 19 May 2026.
+
 Goal: make restore confidence operationally visible.
 
 Tasks:
@@ -623,6 +625,23 @@ Acceptance criteria:
 - `verify --latest` succeeds for valid Postgres custom dump.
 - Corrupted artifact fails checksum or restore-list verification.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `verify --latest` now fails clearly when no backups exist;
+- verification checks artifact checksum against the manifest;
+- verification decrypts and decompresses the artifact before declaring success;
+- PostgreSQL Docker targets run `pg_restore --list <dump-file>` against a temporary restored dump;
+- temporary restore-list files are cleaned up after verification;
+- corrupted artifacts fail verification before restore-list execution;
+- invalid PostgreSQL dump content fails restore-list verification;
+- tests cover empty targets, checksum mismatch, restore-list success, restore-list failure, and existing backup/list/restore flow.
 
 ## Phase 10 — Notifications
 

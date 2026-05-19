@@ -204,6 +204,24 @@ describe("cli harness baseline", () => {
     expect(readFileSync(outputPath, "utf8")).toBe("local fake dump");
   });
 
+  it("fails verify latest clearly when no backups exist", () => {
+    const storageRoot = mkdtempSync(
+      path.join(tmpdir(), "ops-backup-runner-storage-")
+    );
+    const configPath = writeConfig(localConfig(storageRoot));
+
+    const result = runCli([
+      "verify",
+      "local-demo",
+      "--latest",
+      "--config",
+      configPath,
+    ]);
+
+    expect(result.exitCode).toBe(exitCodes.verificationFailure);
+    expect(result.stderr).toContain("No backups found to verify.");
+  });
+
   it("rejects prune for unsupported external storage targets", () => {
     const result = runCli([
       "prune",

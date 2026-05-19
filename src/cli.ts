@@ -10,7 +10,10 @@ import {
   restoreLocalBackupArtifact,
   runLocalBackupJob,
 } from "./core/backup-job.js";
-import { sha256Hex } from "./core/artifact.js";
+import {
+  verifyBackupArtifact,
+  type BackupVerificationResult,
+} from "./core/backup-verification.js";
 import type { BackupManifest } from "./core/manifest.js";
 import type { Dumper } from "./core/ports.js";
 import { createRetentionPlan, type RetentionPlan } from "./core/retention.js";
@@ -486,11 +489,7 @@ const runVerifyCommand = (args: string[]): CliResult => {
   );
   if (!selection.ok) return selection.result;
 
-  const results: {
-    backupId: string;
-    targetId: string;
-    ok: boolean;
-  }[] = [];
+  const results: BackupVerificationResult[] = [];
 
   for (const target of selection.targets) {
     const storage = getLocalStorageForTarget(configResult.config, target);
@@ -503,23 +502,41 @@ const runVerifyCommand = (args: string[]): CliResult => {
       : storage.storage.listManifests(target.id);
 
     for (const manifest of manifests) {
-      const artifactBytes = storage.storage.readArtifact(manifest);
-      results.push({
-        backupId: manifest.backupId,
-        targetId: manifest.targetId,
-        ok: sha256Hex(artifactBytes) === manifest.artifact.sha256,
-      });
+      try {
+        results.push(
+          verifyBackupArtifact({
+            target,
+            manifest,
+            artifactBytes: storage.storage.readArtifact(manifest),
+            encryption: getEncryptionForTarget(configResult.config, target),
+          })
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        results.push({
+          backupId: manifest.backupId,
+          targetId: manifest.targetId,
+          ok: false,
+          checks: {
+            checksum: false,
+            restore: false,
+          },
+          issues: [`Backup artifact read failed: ${message}`],
+          tempWorkspaceCleaned: true,
+        });
+      }
     }
   }
 
   const failed = results.filter((result) => !result.ok);
+  const noBackups = results.length === 0;
   if (json) {
     const payload = {
-      ok: failed.length === 0,
+      ok: !noBackups && failed.length === 0,
       command: "verify",
       results,
     };
-    return failed.length === 0
+    return !noBackups && failed.length === 0
       ? success(renderJson(payload))
       : failure(exitCodes.verificationFailure, renderJson(payload));
   }
@@ -536,7 +553,10 @@ const runVerifyCommand = (args: string[]): CliResult => {
       exitCodes.verificationFailure,
       [
         "Backup verification failed.",
-        ...failed.map((result) => `- ${result.targetId}: ${result.backupId}`),
+        ...failed.flatMap((result) => [
+          `- ${result.targetId}: ${result.backupId}`,
+          ...result.issues.map((issue) => `  ${issue}`),
+        ]),
       ].join("\n")
     );
   }
