@@ -2,6 +2,7 @@ import { loadConfigFromFile } from "../config/loader.js";
 import { redactConfigPreview } from "../config/redact.js";
 import { resolveTargetEnvReferences } from "../config/env.js";
 import type { BackupRunnerConfig, BackupTarget } from "../config/types.js";
+import { checkPostgresDockerTarget } from "../dumpers/postgres-docker.js";
 
 export interface DoctorTargetResult {
   id: string;
@@ -39,13 +40,18 @@ const inspectTarget = (
   }
 
   const envResult = resolveTargetEnvReferences(config, target);
+  const postgresDockerResult = checkPostgresDockerTarget(target);
+  const issues = [
+    ...envResult.issues.map((issue) => issue.message),
+    ...postgresDockerResult.issues,
+  ];
 
   return {
     id: target.id,
     enabled: true,
-    ok: envResult.ok,
-    status: envResult.ok ? "ready" : "missing-env",
-    issues: envResult.issues.map((issue) => issue.message),
+    ok: envResult.ok && postgresDockerResult.ok,
+    status: issues.length === 0 ? "ready" : "missing-env",
+    issues,
   };
 };
 

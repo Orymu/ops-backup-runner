@@ -12,7 +12,9 @@ import {
 } from "./core/backup-job.js";
 import { sha256Hex } from "./core/artifact.js";
 import type { BackupManifest } from "./core/manifest.js";
+import type { Dumper } from "./core/ports.js";
 import { fakeDumper } from "./dumpers/fake.js";
+import { createPostgresDockerDumper } from "./dumpers/postgres-docker.js";
 import { createLocalStorageAdapter } from "./storage/local.js";
 
 export const cliName = "ops-backup-runner";
@@ -241,16 +243,6 @@ const getLocalBackupTarget = (
       ok: false;
       result: CliResult;
     } => {
-  if (target.dumper.type !== "fake") {
-    return {
-      ok: false,
-      result: failure(
-        exitCodes.runtimeFailure,
-        `${target.id} uses ${target.dumper.type} dumper. Phase 4 only supports fake dumper.`
-      ),
-    };
-  }
-
   const storage = getLocalStorageForTarget(config, target);
   if (!storage.ok) {
     return {
@@ -260,6 +252,11 @@ const getLocalBackupTarget = (
   }
 
   return storage;
+};
+
+const getDumperForTarget = (target: BackupTarget): Dumper<BackupTarget> => {
+  if (target.dumper.type === "fake") return fakeDumper;
+  return createPostgresDockerDumper();
 };
 
 const findManifestByBackupId = (
@@ -349,7 +346,11 @@ const runBackupCommand = (args: string[]): CliResult => {
     const localTarget = getLocalBackupTarget(configResult.config, target);
     if (!localTarget.ok) return localTarget.result;
 
-    const result = runLocalBackupJob(target, fakeDumper, localTarget.storage);
+    const result = runLocalBackupJob(
+      target,
+      getDumperForTarget(target),
+      localTarget.storage
+    );
     manifests.push(result.manifest);
   }
 

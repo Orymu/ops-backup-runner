@@ -17,6 +17,9 @@ export interface EnvResolutionResult {
   issues: EnvResolutionIssue[];
 }
 
+export const getRuntimeEnv = (): Record<string, string | undefined> =>
+  process.env;
+
 const addEnvReference = (
   references: EnvReference[],
   name: string | undefined,

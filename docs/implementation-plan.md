@@ -362,6 +362,8 @@ Result:
 
 ## Phase 5 — PostgreSQL Docker Dumper
 
+Status: Done on 18 May 2026.
+
 Goal: back up Dockerized PostgreSQL databases.
 
 Tasks:
@@ -399,6 +401,28 @@ Acceptance criteria:
 - Failed container/database/user produces clear error.
 - No plaintext dump is left behind after backup.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `postgresDocker` dumper is implemented behind the shared dumper port;
+- safe `docker exec ... pg_dump` argument construction is unit tested;
+- optional `dockerBinary` and `pgRestoreBinary` are supported in config;
+- optional `passwordEnv` is passed to Docker as `--env PGPASSWORD` without putting the secret value in command arguments;
+- dump stdout is captured as bytes and passed into the existing gzip/local backup pipeline;
+- `pg_restore --list` validates the custom dump from stdin before the artifact is accepted;
+- docker failures and invalid dump verification failures produce clear target-specific errors;
+- doctor checks validate docker binary availability, container existence, and `pg_dump --version` inside the container for enabled `postgresDocker` targets;
+- no plaintext dump file is written by the dumper or backup job.
+
+Integration note:
+
+- Disposable Postgres container coverage was not added in this phase because the unit suite uses mocked process runners and must stay stable without Docker availability in CI. A real-container test can be added later behind an explicit integration-test command.
 
 ## Phase 6 — S3/R2 Storage Adapter
 

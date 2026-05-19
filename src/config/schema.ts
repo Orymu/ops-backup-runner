@@ -32,6 +32,7 @@ const postgresDockerDumperSchema = z
     passwordEnv: envNameSchema.optional(),
     format: z.literal("custom").default("custom"),
     dockerBinary: z.string().min(1).optional(),
+    pgRestoreBinary: z.string().min(1).optional(),
   })
   .strict();
 

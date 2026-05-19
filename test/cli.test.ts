@@ -136,7 +136,7 @@ describe("cli harness baseline", () => {
     });
   });
 
-  it("rejects real backup execution for unsupported adapters", () => {
+  it("rejects real backup execution for unsupported storage adapters", () => {
     const result = runCli([
       "backup",
       "maintana",
@@ -145,7 +145,7 @@ describe("cli harness baseline", () => {
     ]);
 
     expect(result.exitCode).toBe(exitCodes.runtimeFailure);
-    expect(result.stderr).toContain("Phase 4 only supports fake dumper");
+    expect(result.stderr).toContain("Phase 4 only supports local storage");
   });
 
   it("runs local backup, lists it, verifies it, and restores it", () => {
