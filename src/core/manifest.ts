@@ -17,7 +17,7 @@ export const backupManifestSchema = z
       .strict(),
     storage: z
       .object({
-        type: z.literal("local"),
+        type: z.enum(["local", "s3"]),
         artifactKey: z.string().min(1),
         manifestKey: z.string().min(1),
       })

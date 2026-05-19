@@ -25,4 +25,12 @@ export interface StorageAdapter {
   writeManifest(manifest: BackupManifest): void;
   listManifests(targetId: string): BackupManifest[];
   readArtifact(manifest: BackupManifest): Buffer;
+  deleteObject?(key: string): void;
+  headObject?(key: string): StoredObjectHead;
+}
+
+export interface StoredObjectHead {
+  key: string;
+  sizeBytes: number;
+  metadata: Record<string, string>;
 }

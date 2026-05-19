@@ -426,6 +426,8 @@ Integration note:
 
 ## Phase 6 — S3/R2 Storage Adapter
 
+Status: Done on 18 May 2026.
+
 Goal: support Cloudflare R2 and generic S3-compatible storage.
 
 Tasks:
@@ -459,6 +461,24 @@ Acceptance criteria:
 - Config supports per-target endpoint/bucket/prefix/credentials.
 - `doctor` can validate storage config without printing secrets.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- S3-compatible storage adapter is implemented with AWS SDK v3;
+- adapter supports upload, head, list-by-prefix, download, and delete operations;
+- artifact upload verifies object size with `HeadObject`;
+- manifest upload verifies object size with `HeadObject`;
+- object metadata includes target id, backup id, created time, and sha256 where relevant;
+- key generation supports per-target prefixes for shared buckets;
+- config already supports per-target endpoint, bucket, prefix, and credential env references;
+- doctor validates missing S3 credential env references through the existing env resolution path without printing secret values;
+- tests use a mocked S3 client and do not require real Cloudflare R2 credentials.
 
 ## Phase 7 — Age Encryption
 
