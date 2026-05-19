@@ -35,25 +35,29 @@ export const getTargetEnvReferences = (
   const encryption = target.encryption ?? config.defaults?.encryption;
   const notifications = target.notifications ?? config.defaults?.notifications;
 
-  addEnvReference(
-    references,
-    target.dumper.passwordEnv,
-    `${target.id}.dumper.passwordEnv`,
-    false
-  );
+  if (target.dumper.type === "postgresDocker") {
+    addEnvReference(
+      references,
+      target.dumper.passwordEnv,
+      `${target.id}.dumper.passwordEnv`,
+      false
+    );
+  }
 
-  addEnvReference(
-    references,
-    target.storage.accessKeyIdEnv,
-    `${target.id}.storage.accessKeyIdEnv`,
-    true
-  );
-  addEnvReference(
-    references,
-    target.storage.secretAccessKeyEnv,
-    `${target.id}.storage.secretAccessKeyEnv`,
-    true
-  );
+  if (target.storage.type === "s3") {
+    addEnvReference(
+      references,
+      target.storage.accessKeyIdEnv,
+      `${target.id}.storage.accessKeyIdEnv`,
+      true
+    );
+    addEnvReference(
+      references,
+      target.storage.secretAccessKeyEnv,
+      `${target.id}.storage.secretAccessKeyEnv`,
+      true
+    );
+  }
 
   if (encryption?.type === "age") {
     addEnvReference(

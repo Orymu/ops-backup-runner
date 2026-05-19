@@ -250,6 +250,8 @@ Result:
 
 ## Phase 3 — CLI Foundation
 
+Status: Done on 18 May 2026.
+
 Goal: create stable command interfaces with no real backup side effects yet.
 
 Tasks:
@@ -283,7 +285,28 @@ Acceptance criteria:
 - `backup all --dry-run` lists enabled targets without executing dump/upload.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+node dist/cli.js backup all --dry-run --config config/targets.example.yaml
+node dist/cli.js backup unknown --dry-run --config config/targets.example.yaml
+node dist/cli.js restore --help
+```
+
+Result:
+
+- command parser is testable through `runCli(args)`;
+- `doctor`, `backup`, `list`, `verify`, `restore`, and `prune` have help output;
+- shared `--config` and `--json` handling exists;
+- `backup all --dry-run` validates target selection without dump/upload/prune/notification side effects;
+- unknown target returns usage exit code `2` with a clear message;
+- non-dry-run backup returns runtime exit code `1` until Phase 4 implements the local pipeline;
+- placeholder target commands validate target selection and explicitly report that no backup side effects were executed.
+
 ## Phase 4 — Local Backup Pipeline
+
+Status: Done on 18 May 2026.
 
 Goal: prove the core pipeline with fake dumper and local storage.
 
@@ -318,6 +341,24 @@ Acceptance criteria:
 - Manifest includes target id, created time, artifact key, size, sha256, compression, encryption, storage metadata.
 - Temp files are cleaned after success and failure.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `fake` dumper config is supported for local/dev backup targets;
+- `local` storage config is supported for local/dev artifact storage;
+- backup pipeline writes `fake dump -> gzip -> local artifact -> manifest`;
+- manifest includes target id, created time, artifact key, size, sha256, compression, encryption, and storage metadata;
+- `list` reads local manifests;
+- `verify --latest` checks local artifact sha256 against the manifest;
+- `restore` gunzips the stored artifact into the requested output file;
+- temp workspace cleanup is handled in the backup job finalizer;
+- real PostgreSQL, S3/R2, age encryption, retention pruning, and notifications remain intentionally outside Phase 4.
 
 ## Phase 5 — PostgreSQL Docker Dumper
 

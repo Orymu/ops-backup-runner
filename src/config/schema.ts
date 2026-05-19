@@ -35,7 +35,17 @@ const postgresDockerDumperSchema = z
   })
   .strict();
 
-const dumperSchema = z.discriminatedUnion("type", [postgresDockerDumperSchema]);
+const fakeDumperSchema = z
+  .object({
+    type: z.literal("fake"),
+    bytes: z.string().min(1).default("ops-backup-runner fake dump\n"),
+  })
+  .strict();
+
+const dumperSchema = z.discriminatedUnion("type", [
+  postgresDockerDumperSchema,
+  fakeDumperSchema,
+]);
 
 const s3StorageSchema = z
   .object({
@@ -49,7 +59,17 @@ const s3StorageSchema = z
   })
   .strict();
 
-const storageSchema = z.discriminatedUnion("type", [s3StorageSchema]);
+const localStorageSchema = z
+  .object({
+    type: z.literal("local"),
+    rootPath: z.string().min(1),
+  })
+  .strict();
+
+const storageSchema = z.discriminatedUnion("type", [
+  s3StorageSchema,
+  localStorageSchema,
+]);
 
 const ageEncryptionSchema = z
   .object({

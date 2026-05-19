@@ -1,0 +1,65 @@
+import { gzipSync, gunzipSync } from "node:zlib";
+
+import type { BackupTarget } from "../config/types.js";
+import { createBackupId, sha256Hex } from "./artifact.js";
+import type { BackupManifest } from "./manifest.js";
+import type { Dumper, StorageAdapter } from "./ports.js";
+import { createTempWorkspace } from "./temp-workspace.js";
+
+export interface BackupJobResult {
+  manifest: BackupManifest;
+  tempWorkspaceCleaned: boolean;
+}
+
+export const runLocalBackupJob = (
+  target: BackupTarget,
+  dumper: Dumper<BackupTarget>,
+  storage: StorageAdapter
+): BackupJobResult => {
+  const workspace = createTempWorkspace();
+
+  try {
+    const dump = dumper.dump(target);
+    const compressed = gzipSync(dump.bytes);
+    const backupId = createBackupId(target.id);
+    const extension = `${dump.extension}.gz`;
+    const stored = storage.writeArtifact({
+      targetId: target.id,
+      backupId,
+      artifactBytes: compressed,
+      extension,
+    });
+
+    const manifest: BackupManifest = {
+      version: 1,
+      backupId,
+      targetId: target.id,
+      createdAt: new Date().toISOString(),
+      artifact: {
+        key: stored.artifactKey,
+        sizeBytes: stored.sizeBytes,
+        sha256: sha256Hex(compressed),
+        compression: "gzip",
+        encryption: "none",
+      },
+      storage: {
+        type: "local",
+        artifactKey: stored.artifactKey,
+        manifestKey: stored.manifestKey,
+      },
+    };
+
+    storage.writeManifest(manifest);
+    workspace.cleanup();
+
+    return {
+      manifest,
+      tempWorkspaceCleaned: true,
+    };
+  } finally {
+    workspace.cleanup();
+  }
+};
+
+export const restoreLocalBackupArtifact = (artifactBytes: Buffer): Buffer =>
+  gunzipSync(artifactBytes);

@@ -58,7 +58,7 @@ describe("config foundation", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.issues.join("\n")).toContain("Expected 'postgresDocker'");
+      expect(result.issues.join("\n")).toContain("postgresDocker");
     }
   });
 
