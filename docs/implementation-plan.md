@@ -482,6 +482,8 @@ Result:
 
 ## Phase 7 — Age Encryption
 
+Status: Done on 18 May 2026.
+
 Goal: encrypt backups before external upload.
 
 Tasks:
@@ -520,6 +522,26 @@ Acceptance criteria:
 - Restore without required identity fails clearly.
 - `none` encryption is blocked for production external storage.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- encryption is modeled as a core pipeline port;
+- `none` encryption is implemented for local/dev use;
+- `age` encryption adapter is implemented with a process runner and mocked tests;
+- backup pipeline now applies encryption after gzip and before storage;
+- restore path decrypts before gunzip;
+- age recipient is resolved from env for backup encryption;
+- age identity path is resolved from env for restore decryption;
+- missing identity fails clearly before restore can proceed;
+- external storage with `encryption: none` is blocked unless `allowUnsafeExternal: true` is explicitly set;
+- external-storage encryption guard is included in doctor validation;
+- tests cover encrypted artifact storage, restore decrypt path, age command arguments, missing identity failure, and unsafe external storage guard.
 
 ## Phase 8 — Retention Engine
 

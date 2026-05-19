@@ -145,7 +145,9 @@ describe("cli harness baseline", () => {
     ]);
 
     expect(result.exitCode).toBe(exitCodes.runtimeFailure);
-    expect(result.stderr).toContain("Phase 4 only supports local storage");
+    expect(result.stderr).toContain(
+      "external s3 storage with encryption: none"
+    );
   });
 
   it("runs local backup, lists it, verifies it, and restores it", () => {

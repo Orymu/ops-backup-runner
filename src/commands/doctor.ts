@@ -3,6 +3,7 @@ import { redactConfigPreview } from "../config/redact.js";
 import { resolveTargetEnvReferences } from "../config/env.js";
 import type { BackupRunnerConfig, BackupTarget } from "../config/types.js";
 import { checkPostgresDockerTarget } from "../dumpers/postgres-docker.js";
+import { getExternalStorageEncryptionIssue } from "../encryption/policy.js";
 
 export interface DoctorTargetResult {
   id: string;
@@ -41,15 +42,22 @@ const inspectTarget = (
 
   const envResult = resolveTargetEnvReferences(config, target);
   const postgresDockerResult = checkPostgresDockerTarget(target);
+  const externalStorageEncryptionIssue = getExternalStorageEncryptionIssue(
+    config,
+    target
+  );
   const issues = [
     ...envResult.issues.map((issue) => issue.message),
     ...postgresDockerResult.issues,
+    ...(externalStorageEncryptionIssue === undefined
+      ? []
+      : [externalStorageEncryptionIssue]),
   ];
 
   return {
     id: target.id,
     enabled: true,
-    ok: envResult.ok && postgresDockerResult.ok,
+    ok: issues.length === 0,
     status: issues.length === 0 ? "ready" : "missing-env",
     issues,
   };

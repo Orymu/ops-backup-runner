@@ -15,6 +15,12 @@ import type { BackupManifest } from "./core/manifest.js";
 import type { Dumper } from "./core/ports.js";
 import { fakeDumper } from "./dumpers/fake.js";
 import { createPostgresDockerDumper } from "./dumpers/postgres-docker.js";
+import { createAgeEncryptionAdapter } from "./encryption/age.js";
+import { noneEncryptionAdapter } from "./encryption/none.js";
+import {
+  getEffectiveEncryptionConfig,
+  getExternalStorageEncryptionIssue,
+} from "./encryption/policy.js";
 import { createLocalStorageAdapter } from "./storage/local.js";
 
 export const cliName = "ops-backup-runner";
@@ -192,12 +198,6 @@ const selectTargetsForCommand = (
   return selection;
 };
 
-const getEffectiveEncryptionType = (
-  config: BackupRunnerConfig,
-  target: BackupTarget
-): "age" | "none" =>
-  (target.encryption ?? config.defaults?.encryption ?? { type: "none" }).type;
-
 const getLocalStorageForTarget = (
   config: BackupRunnerConfig,
   target: BackupTarget
@@ -210,18 +210,21 @@ const getLocalStorageForTarget = (
       ok: false;
       message: string;
     } => {
-  const encryptionType = getEffectiveEncryptionType(config, target);
+  const externalStorageEncryptionIssue = getExternalStorageEncryptionIssue(
+    config,
+    target
+  );
+  if (externalStorageEncryptionIssue !== undefined) {
+    return {
+      ok: false,
+      message: externalStorageEncryptionIssue,
+    };
+  }
+
   if (target.storage.type !== "local") {
     return {
       ok: false,
       message: `${target.id} uses ${target.storage.type} storage. Phase 4 only supports local storage.`,
-    };
-  }
-
-  if (encryptionType !== "none") {
-    return {
-      ok: false,
-      message: `${target.id} uses ${encryptionType} encryption. Phase 4 only supports encryption: none.`,
     };
   }
 
@@ -257,6 +260,15 @@ const getLocalBackupTarget = (
 const getDumperForTarget = (target: BackupTarget): Dumper<BackupTarget> => {
   if (target.dumper.type === "fake") return fakeDumper;
   return createPostgresDockerDumper();
+};
+
+const getEncryptionForTarget = (
+  config: BackupRunnerConfig,
+  target: BackupTarget
+) => {
+  const encryption = getEffectiveEncryptionConfig(config, target);
+  if (encryption.type === "none") return noneEncryptionAdapter;
+  return createAgeEncryptionAdapter(config, target);
 };
 
 const findManifestByBackupId = (
@@ -349,7 +361,8 @@ const runBackupCommand = (args: string[]): CliResult => {
     const result = runLocalBackupJob(
       target,
       getDumperForTarget(target),
-      localTarget.storage
+      localTarget.storage,
+      getEncryptionForTarget(configResult.config, target)
     );
     manifests.push(result.manifest);
   }
@@ -540,7 +553,8 @@ const runRestoreCommand = (args: string[]): CliResult => {
   }
 
   const restoredBytes = restoreLocalBackupArtifact(
-    storage.storage.readArtifact(manifest)
+    storage.storage.readArtifact(manifest),
+    getEncryptionForTarget(configResult.config, target)
   );
   writeFileSync(outputPath, restoredBytes);
 

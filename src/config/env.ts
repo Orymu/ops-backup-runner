@@ -17,8 +17,20 @@ export interface EnvResolutionResult {
   issues: EnvResolutionIssue[];
 }
 
+let runtimeEnv: Record<string, string | undefined> = process.env;
+
 export const getRuntimeEnv = (): Record<string, string | undefined> =>
-  process.env;
+  runtimeEnv;
+
+export const setRuntimeEnvForTesting = (
+  env: Record<string, string | undefined>
+): void => {
+  runtimeEnv = env;
+};
+
+export const resetRuntimeEnvForTesting = (): void => {
+  runtimeEnv = process.env;
+};
 
 const addEnvReference = (
   references: EnvReference[],
@@ -92,7 +104,7 @@ export const getTargetEnvReferences = (
 export const resolveTargetEnvReferences = (
   config: BackupRunnerConfig,
   target: BackupTarget,
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = getRuntimeEnv()
 ): EnvResolutionResult => {
   if (!target.enabled) {
     return { ok: true, issues: [] };

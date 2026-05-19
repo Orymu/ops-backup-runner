@@ -76,12 +76,15 @@ const ageEncryptionSchema = z
   .object({
     type: z.literal("age"),
     recipientEnv: envNameSchema.optional(),
+    identityPathEnv: envNameSchema.optional(),
+    binary: z.string().min(1).optional(),
   })
   .strict();
 
 const noneEncryptionSchema = z
   .object({
     type: z.literal("none"),
+    allowUnsafeExternal: z.boolean().optional(),
   })
   .strict();
 

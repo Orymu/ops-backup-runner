@@ -34,3 +34,9 @@ export interface StoredObjectHead {
   sizeBytes: number;
   metadata: Record<string, string>;
 }
+
+export interface EncryptionAdapter {
+  readonly type: "age" | "none";
+  encrypt(bytes: Buffer): Buffer;
+  decrypt(bytes: Buffer): Buffer;
+}

@@ -12,7 +12,7 @@ export const backupManifestSchema = z
         sizeBytes: z.number().int().nonnegative(),
         sha256: z.string().length(64),
         compression: z.literal("gzip"),
-        encryption: z.literal("none"),
+        encryption: z.enum(["age", "none"]),
       })
       .strict(),
     storage: z
