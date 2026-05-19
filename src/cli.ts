@@ -13,6 +13,7 @@ import {
 import { sha256Hex } from "./core/artifact.js";
 import type { BackupManifest } from "./core/manifest.js";
 import type { Dumper } from "./core/ports.js";
+import { createRetentionPlan, type RetentionPlan } from "./core/retention.js";
 import { fakeDumper } from "./dumpers/fake.js";
 import { createPostgresDockerDumper } from "./dumpers/postgres-docker.js";
 import { createAgeEncryptionAdapter } from "./encryption/age.js";
@@ -281,6 +282,43 @@ const sortManifestsNewestFirst = (
   manifests: BackupManifest[]
 ): BackupManifest[] =>
   [...manifests].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+const getRetentionPolicyForTarget = (
+  config: BackupRunnerConfig,
+  target: BackupTarget
+) => target.retention ?? config.defaults?.retention ?? {};
+
+const createPrunePlanForTarget = (
+  config: BackupRunnerConfig,
+  target: BackupTarget
+):
+  | {
+      ok: true;
+      storage: ReturnType<typeof createLocalStorageAdapter>;
+      plan: RetentionPlan;
+    }
+  | {
+      ok: false;
+      result: CliResult;
+    } => {
+  const storage = getLocalStorageForTarget(config, target);
+  if (!storage.ok) {
+    return {
+      ok: false,
+      result: failure(exitCodes.runtimeFailure, storage.message),
+    };
+  }
+
+  return {
+    ok: true,
+    storage: storage.storage,
+    plan: createRetentionPlan({
+      manifests: storage.storage.listManifests(target.id),
+      objectKeys: storage.storage.listObjectKeys?.(target.id) ?? [],
+      policy: getRetentionPolicyForTarget(config, target),
+    }),
+  };
+};
 
 const runDoctorCommand = (args: string[]): CliResult => {
   const configPath = getFlagValue(args, "--config");
@@ -573,19 +611,71 @@ const runRestoreCommand = (args: string[]): CliResult => {
 };
 
 const runPruneCommand = (args: string[]): CliResult => {
+  const targetId = args[1];
   const json = hasFlag(args, "--json");
-  const message =
-    "Prune is not implemented until retention policy execution exists.";
-  return json
-    ? success(
-        renderJson({
-          ok: true,
-          command: "prune",
-          implemented: false,
-          message,
-        })
-      )
-    : success(`${message}\nNo backup side effects were executed.`);
+  const dryRun = hasFlag(args, "--dry-run");
+  const configResult = loadConfigForCommand(args);
+  if (!configResult.ok) return configResult.result;
+
+  const selection = selectTargetsForCommand(
+    args,
+    configResult.config,
+    targetId
+  );
+  if (!selection.ok) return selection.result;
+
+  const plans: { targetId: string; plan: RetentionPlan }[] = [];
+  for (const target of selection.targets) {
+    const result = createPrunePlanForTarget(configResult.config, target);
+    if (!result.ok) return result.result;
+
+    plans.push({ targetId: target.id, plan: result.plan });
+
+    if (!dryRun) {
+      for (const item of result.plan.delete) {
+        try {
+          result.storage.deleteObject?.(item.artifactKey);
+          result.storage.deleteObject?.(item.manifestKey);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "unknown prune error";
+          return failure(
+            exitCodes.runtimeFailure,
+            `Prune failed after planning target ${target.id}: ${message}`
+          );
+        }
+      }
+    }
+  }
+
+  if (json) {
+    return success(
+      renderJson({
+        ok: true,
+        command: "prune",
+        dryRun,
+        plans,
+      })
+    );
+  }
+
+  const lines = [dryRun ? "Prune dry run plan:" : "Prune completed:"];
+  for (const { targetId: planTargetId, plan } of plans) {
+    lines.push(`Target: ${planTargetId}`);
+    lines.push(`  keep: ${String(plan.keep.length)}`);
+    lines.push(`  delete: ${String(plan.delete.length)}`);
+    for (const item of plan.delete) {
+      lines.push(`  - delete ${item.backupId} (${item.reason})`);
+    }
+    if (plan.unknownObjectKeys.length > 0) {
+      lines.push("  unknown objects not deleted:");
+      for (const key of plan.unknownObjectKeys) {
+        lines.push(`  - ${key}`);
+      }
+    }
+  }
+
+  return success(lines.join("\n"));
 };
 
 export const runCli = (args: string[]): CliResult => {

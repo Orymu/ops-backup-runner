@@ -1,4 +1,5 @@
 import {
+  unlinkSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -23,6 +24,17 @@ const getLocalRoot = (target: BackupTarget): string => {
 
 const getTargetRoot = (root: string, targetId: string): string =>
   path.join(root, targetId);
+
+const walkFiles = (directory: string): string[] => {
+  if (!existsSync(directory)) return [];
+
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return walkFiles(fullPath);
+    if (entry.isFile()) return [fullPath];
+    return [];
+  });
+};
 
 export const createLocalStorageAdapter = (
   target: BackupTarget
@@ -79,6 +91,20 @@ export const createLocalStorageAdapter = (
 
     readArtifact(manifest): Buffer {
       return readFileSync(path.join(root, manifest.storage.artifactKey));
+    },
+
+    deleteObject(key): void {
+      const objectPath = path.join(root, key);
+      if (existsSync(objectPath)) {
+        unlinkSync(objectPath);
+      }
+    },
+
+    listObjectKeys(targetId): string[] {
+      const targetRoot = getTargetRoot(root, targetId);
+      return walkFiles(targetRoot)
+        .map((file) => path.relative(root, file).split(path.sep).join("/"))
+        .sort();
     },
   };
 };

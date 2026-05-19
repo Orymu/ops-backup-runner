@@ -545,6 +545,8 @@ Result:
 
 ## Phase 8 — Retention Engine
 
+Status: Done on 19 May 2026.
+
 Goal: remove old backups safely.
 
 Tasks:
@@ -578,6 +580,23 @@ Acceptance criteria:
 - Unknown objects are reported but not deleted.
 - Prune failure does not mark backup upload as failed if backup already succeeded.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- retention policy now supports daily, weekly, monthly, max-age, and manual keep rules;
+- local storage can list object keys and delete specific keys for prune execution;
+- retention planner keeps selected manifest-backed backups and plans only expired artifact/manifest pairs for deletion;
+- unknown objects are reported in prune output and are never deleted;
+- `prune --dry-run` prints intended deletions without deleting files;
+- `prune` execution deletes only manifest-backed artifact and manifest pairs;
+- unsupported external storage targets fail clearly instead of pruning blindly;
+- tests cover planner edge cases, dry-run safety, execution deletion safety, and unsupported storage behavior.
 
 ## Phase 9 — Verification Commands
 

@@ -20,6 +20,7 @@ const retentionSchema = z
     keepWeekly: z.number().int().positive().optional(),
     keepMonthly: z.number().int().positive().optional(),
     maxAgeDays: z.number().int().positive().optional(),
+    keepManual: z.array(z.string().min(1)).optional(),
   })
   .strict();
 

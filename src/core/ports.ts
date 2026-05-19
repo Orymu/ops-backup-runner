@@ -27,6 +27,7 @@ export interface StorageAdapter {
   readArtifact(manifest: BackupManifest): Buffer;
   deleteObject?(key: string): void;
   headObject?(key: string): StoredObjectHead;
+  listObjectKeys?(targetId: string): string[];
 }
 
 export interface StoredObjectHead {

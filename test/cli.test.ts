@@ -204,7 +204,7 @@ describe("cli harness baseline", () => {
     expect(readFileSync(outputPath, "utf8")).toBe("local fake dump");
   });
 
-  it("keeps prune as an explicit no-op until retention execution exists", () => {
+  it("rejects prune for unsupported external storage targets", () => {
     const result = runCli([
       "prune",
       "maintana",
@@ -212,8 +212,9 @@ describe("cli harness baseline", () => {
       writeConfig(enabledConfig),
     ]);
 
-    expect(result.exitCode).toBe(exitCodes.success);
-    expect(result.stdout).toContain("Prune is not implemented");
-    expect(result.stdout).toContain("No backup side effects were executed.");
+    expect(result.exitCode).toBe(exitCodes.runtimeFailure);
+    expect(result.stderr).toContain(
+      "external s3 storage with encryption: none"
+    );
   });
 });
