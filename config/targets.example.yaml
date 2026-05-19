@@ -11,6 +11,9 @@ defaults:
   notifications:
     telegram:
       enabled: true
+      onFailure: true
+      onSuccess: false
+      successCadence: weekly
       botTokenEnv: BACKUP_TELEGRAM_BOT_TOKEN
       chatIdEnv: BACKUP_TELEGRAM_CHAT_ID
 

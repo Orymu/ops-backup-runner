@@ -2,10 +2,7 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { BackupTarget } from "../config/types.js";
-import {
-  defaultProcessRunner,
-  type ProcessRunner,
-} from "../dumpers/postgres-docker.js";
+import { defaultProcessRunner, type ProcessRunner } from "./process-runner.js";
 import { sha256Hex } from "./artifact.js";
 import { restoreLocalBackupArtifact } from "./backup-job.js";
 import type { BackupManifest } from "./manifest.js";

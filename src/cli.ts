@@ -3,6 +3,7 @@
 import { writeFileSync } from "node:fs";
 
 import { formatDoctorResult, runDoctor } from "./commands/doctor.js";
+import { getRuntimeEnv } from "./config/env.js";
 import { loadConfigFromFile } from "./config/loader.js";
 import { selectTargets } from "./config/targets.js";
 import type { BackupRunnerConfig, BackupTarget } from "./config/types.js";
@@ -25,6 +26,12 @@ import {
   getEffectiveEncryptionConfig,
   getExternalStorageEncryptionIssue,
 } from "./encryption/policy.js";
+import { getServerName, redactSensitiveText } from "./notifications/message.js";
+import {
+  getEffectiveNotificationsConfig,
+  shouldNotifyBackupFailure,
+} from "./notifications/policy.js";
+import { createTelegramNotifier } from "./notifications/telegram.js";
 import { createLocalStorageAdapter } from "./storage/local.js";
 
 export const cliName = "ops-backup-runner";
@@ -323,6 +330,59 @@ const createPrunePlanForTarget = (
   };
 };
 
+const sendBackupFailureNotification = (params: {
+  config: BackupRunnerConfig;
+  target: BackupTarget;
+  stage: string;
+  error: string;
+}): string | undefined => {
+  if (!shouldNotifyBackupFailure(params.config, params.target)) {
+    return undefined;
+  }
+
+  const telegram = getEffectiveNotificationsConfig(
+    params.config,
+    params.target
+  )?.telegram;
+  if (telegram?.enabled !== true) {
+    return undefined;
+  }
+
+  const env = getRuntimeEnv();
+  const botToken =
+    telegram.botTokenEnv === undefined ? undefined : env[telegram.botTokenEnv];
+  const chatId =
+    telegram.chatIdEnv === undefined ? undefined : env[telegram.chatIdEnv];
+
+  if (botToken === undefined || chatId === undefined) {
+    return `Telegram failure notification skipped: missing Telegram runtime configuration for ${params.target.id}.`;
+  }
+
+  const notifier = createTelegramNotifier({ botToken, chatId });
+  return notifier.notifyFailure({
+    targetId: params.target.id,
+    stage: params.stage,
+    occurredAt: new Date(),
+    error: redactSensitiveText(params.error, [botToken, chatId]),
+    server: getServerName(),
+  }).message;
+};
+
+const formatBackupFailure = (params: {
+  target: BackupTarget;
+  stage: string;
+  error: string;
+  notificationMessage: string | undefined;
+}): string =>
+  [
+    `Backup failed for ${params.target.id} during ${params.stage}: ${redactSensitiveText(
+      params.error
+    )}`,
+    ...(params.notificationMessage === undefined
+      ? []
+      : [params.notificationMessage]),
+  ].join("\n");
+
 const runDoctorCommand = (args: string[]): CliResult => {
   const configPath = getFlagValue(args, "--config");
   const json = hasFlag(args, "--json");
@@ -396,16 +456,40 @@ const runBackupCommand = (args: string[]): CliResult => {
 
   const manifests: BackupManifest[] = [];
   for (const target of selection.targets) {
-    const localTarget = getLocalBackupTarget(configResult.config, target);
-    if (!localTarget.ok) return localTarget.result;
+    let stage = "prepare";
+    try {
+      stage = "storage";
+      const localTarget = getLocalBackupTarget(configResult.config, target);
+      if (!localTarget.ok) {
+        return localTarget.result;
+      }
 
-    const result = runLocalBackupJob(
-      target,
-      getDumperForTarget(target),
-      localTarget.storage,
-      getEncryptionForTarget(configResult.config, target)
-    );
-    manifests.push(result.manifest);
+      stage = "backup";
+      const result = runLocalBackupJob(
+        target,
+        getDumperForTarget(target),
+        localTarget.storage,
+        getEncryptionForTarget(configResult.config, target)
+      );
+      manifests.push(result.manifest);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const notificationMessage = sendBackupFailureNotification({
+        config: configResult.config,
+        target,
+        stage,
+        error: message,
+      });
+      return failure(
+        exitCodes.runtimeFailure,
+        formatBackupFailure({
+          target,
+          stage,
+          error: message,
+          notificationMessage,
+        })
+      );
+    }
   }
 
   if (json) {

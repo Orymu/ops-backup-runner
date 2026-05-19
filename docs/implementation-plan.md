@@ -645,6 +645,8 @@ Result:
 
 ## Phase 10 — Notifications
 
+Status: Done on 19 May 2026.
+
 Goal: alert operators when backup fails.
 
 Tasks:
@@ -675,6 +677,23 @@ Acceptance criteria:
 - Missing Telegram config fails `doctor` if notifications are enabled.
 - Notification failure is logged but does not hide the original backup failure.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- notification core contracts are defined for backup failure alerts;
+- Telegram notification config supports failure notifications by default, optional success notifications, and weekly/monthly success cadence settings;
+- `doctor` fails clearly when Telegram notifications are enabled without required env references or runtime env values;
+- Telegram sendMessage details are isolated in the notification adapter;
+- backup failures trigger Telegram alerts when configured;
+- Telegram delivery failures are reported alongside the original backup failure without replacing it;
+- failure messages redact token/secret-shaped values before output;
+- tests cover config validation, message formatting, Telegram request construction, delivery failure redaction, backup failure alerting, and notification failure handling.
 
 ## Phase 11 — Systemd Install Assets
 

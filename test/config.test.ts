@@ -120,6 +120,117 @@ targets:
     ]);
   });
 
+  it("requires Telegram env names and values when Telegram notifications are enabled", () => {
+    const configPath = writeConfig(`
+version: 1
+targets:
+  - id: local-demo
+    enabled: true
+    dumper:
+      type: fake
+      bytes: dump
+    storage:
+      type: local
+      rootPath: /tmp/backups
+    notifications:
+      telegram:
+        enabled: true
+`);
+    const result = loadConfigFromFile(configPath);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const target = result.config.targets[0];
+    expect(target).toBeDefined();
+    if (target === undefined) return;
+
+    const envResult = resolveTargetEnvReferences(result.config, target, {});
+
+    expect(envResult.ok).toBe(false);
+    expect(envResult.issues.map((issue) => issue.message)).toEqual([
+      "local-demo.notifications.telegram.botTokenEnv is required when Telegram notifications are enabled",
+      "local-demo.notifications.telegram.chatIdEnv is required when Telegram notifications are enabled",
+    ]);
+
+    const doctorResult = runDoctor(configPath);
+    expect(doctorResult.ok).toBe(false);
+    if (!doctorResult.ok) {
+      expect(doctorResult.issues).toContain(
+        "local-demo.notifications.telegram.botTokenEnv is required when Telegram notifications are enabled"
+      );
+    }
+  });
+
+  it("reports missing Telegram runtime env values when names are configured", () => {
+    const result = loadConfigFromFile(
+      writeConfig(`
+version: 1
+targets:
+  - id: local-demo
+    enabled: true
+    dumper:
+      type: fake
+      bytes: dump
+    storage:
+      type: local
+      rootPath: /tmp/backups
+    notifications:
+      telegram:
+        enabled: true
+        botTokenEnv: BACKUP_TELEGRAM_BOT_TOKEN
+        chatIdEnv: BACKUP_TELEGRAM_CHAT_ID
+`)
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const target = result.config.targets[0];
+    expect(target).toBeDefined();
+    if (target === undefined) return;
+
+    const envResult = resolveTargetEnvReferences(result.config, target, {});
+
+    expect(envResult.ok).toBe(false);
+    expect(envResult.issues.map((issue) => issue.envName)).toEqual([
+      "BACKUP_TELEGRAM_BOT_TOKEN",
+      "BACKUP_TELEGRAM_CHAT_ID",
+    ]);
+  });
+
+  it("defaults Telegram failure notification policy on when Telegram is enabled", () => {
+    const result = loadConfigFromFile(
+      writeConfig(`
+version: 1
+targets:
+  - id: local-demo
+    enabled: true
+    dumper:
+      type: fake
+      bytes: dump
+    storage:
+      type: local
+      rootPath: /tmp/backups
+    notifications:
+      telegram:
+        enabled: true
+        botTokenEnv: BACKUP_TELEGRAM_BOT_TOKEN
+        chatIdEnv: BACKUP_TELEGRAM_CHAT_ID
+`)
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.config.targets[0]?.notifications?.telegram?.onFailure).toBe(
+        true
+      );
+      expect(result.config.targets[0]?.notifications?.telegram?.onSuccess).toBe(
+        false
+      );
+    }
+  });
+
   it("does not require env references for disabled targets", () => {
     const result = runDoctor(
       writeConfig(validConfig.replace("enabled: true", "enabled: false"))

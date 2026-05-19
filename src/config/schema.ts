@@ -97,6 +97,9 @@ const encryptionSchema = z.discriminatedUnion("type", [
 const telegramNotificationSchema = z
   .object({
     enabled: z.boolean().default(false),
+    onFailure: z.boolean().default(true),
+    onSuccess: z.boolean().default(false),
+    successCadence: z.enum(["daily", "weekly", "monthly"]).optional(),
     botTokenEnv: envNameSchema.optional(),
     chatIdEnv: envNameSchema.optional(),
   })

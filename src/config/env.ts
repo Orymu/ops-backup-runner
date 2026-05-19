@@ -110,6 +110,32 @@ export const resolveTargetEnvReferences = (
     return { ok: true, issues: [] };
   }
 
+  const notifications = target.notifications ?? config.defaults?.notifications;
+  const telegram = notifications?.telegram;
+  const notificationConfigIssues: EnvResolutionIssue[] =
+    telegram?.enabled === true
+      ? [
+          ...(telegram.botTokenEnv === undefined
+            ? [
+                {
+                  envName: "botTokenEnv",
+                  owner: `${target.id}.notifications.telegram.botTokenEnv`,
+                  message: `${target.id}.notifications.telegram.botTokenEnv is required when Telegram notifications are enabled`,
+                },
+              ]
+            : []),
+          ...(telegram.chatIdEnv === undefined
+            ? [
+                {
+                  envName: "chatIdEnv",
+                  owner: `${target.id}.notifications.telegram.chatIdEnv`,
+                  message: `${target.id}.notifications.telegram.chatIdEnv is required when Telegram notifications are enabled`,
+                },
+              ]
+            : []),
+        ]
+      : [];
+
   const issues = getTargetEnvReferences(config, target)
     .filter((reference) => reference.requiredForEnabledTarget)
     .filter((reference) => env[reference.name] === undefined)
@@ -120,7 +146,7 @@ export const resolveTargetEnvReferences = (
     }));
 
   return {
-    ok: issues.length === 0,
-    issues,
+    ok: notificationConfigIssues.length === 0 && issues.length === 0,
+    issues: [...notificationConfigIssues, ...issues],
   };
 };

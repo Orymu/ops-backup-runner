@@ -2,9 +2,18 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  resetRuntimeEnvForTesting,
+  setRuntimeEnvForTesting,
+} from "../src/config/env.js";
+import type { ProcessRunner } from "../src/core/process-runner.js";
 import { cliName, exitCodes, getStartupMessage, runCli } from "../src/cli.js";
+import {
+  resetTelegramProcessRunnerForTesting,
+  setTelegramProcessRunnerForTesting,
+} from "../src/notifications/telegram.js";
 
 const writeConfig = (content: string): string => {
   const directory = mkdtempSync(path.join(tmpdir(), "ops-backup-runner-cli-"));
@@ -57,7 +66,33 @@ targets:
       type: none
 `;
 
+const localFailingNotificationConfig = (storageRoot: string): string => `
+version: 1
+targets:
+  - id: local-demo
+    enabled: true
+    dumper:
+      type: fake
+      bytes: local fake dump
+    storage:
+      type: local
+      rootPath: ${storageRoot}
+    encryption:
+      type: age
+      recipientEnv: MISSING_AGE_RECIPIENT
+    notifications:
+      telegram:
+        enabled: true
+        botTokenEnv: BACKUP_TELEGRAM_BOT_TOKEN
+        chatIdEnv: BACKUP_TELEGRAM_CHAT_ID
+`;
+
 describe("cli harness baseline", () => {
+  afterEach(() => {
+    resetRuntimeEnvForTesting();
+    resetTelegramProcessRunnerForTesting();
+  });
+
   it("exposes the CLI name", () => {
     expect(cliName).toBe("ops-backup-runner");
   });
@@ -220,6 +255,72 @@ describe("cli harness baseline", () => {
 
     expect(result.exitCode).toBe(exitCodes.verificationFailure);
     expect(result.stderr).toContain("No backups found to verify.");
+  });
+
+  it("sends Telegram failure alerts without hiding the backup failure", () => {
+    const storageRoot = mkdtempSync(
+      path.join(tmpdir(), "ops-backup-runner-storage-")
+    );
+    const configPath = writeConfig(localFailingNotificationConfig(storageRoot));
+    setRuntimeEnvForTesting({
+      BACKUP_TELEGRAM_BOT_TOKEN: "bot-secret",
+      BACKUP_TELEGRAM_CHAT_ID: "12345",
+    });
+    const calls: { command: string; args: string[] }[] = [];
+    const runner: ProcessRunner = (command, args) => {
+      calls.push({ command, args });
+      return {
+        status: 0,
+        stdout: Buffer.from("{}"),
+        stderr: "",
+      };
+    };
+    setTelegramProcessRunnerForTesting(runner);
+
+    const result = runCli(["backup", "local-demo", "--config", configPath]);
+
+    expect(result.exitCode).toBe(exitCodes.runtimeFailure);
+    expect(result.stderr).toContain(
+      "Backup failed for local-demo during backup"
+    );
+    expect(result.stderr).toContain(
+      "Missing required environment variable MISSING_AGE_RECIPIENT"
+    );
+    expect(result.stderr).toContain("Telegram failure notification sent.");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.command).toBe("curl");
+    expect(calls[0]?.args.join(" ")).toContain("sendMessage");
+  });
+
+  it("reports Telegram failure without hiding the original backup failure", () => {
+    const storageRoot = mkdtempSync(
+      path.join(tmpdir(), "ops-backup-runner-storage-")
+    );
+    const configPath = writeConfig(localFailingNotificationConfig(storageRoot));
+    setRuntimeEnvForTesting({
+      BACKUP_TELEGRAM_BOT_TOKEN: "bot-secret",
+      BACKUP_TELEGRAM_CHAT_ID: "12345",
+    });
+    const runner: ProcessRunner = () => ({
+      status: 1,
+      stdout: Buffer.alloc(0),
+      stderr: "telegram denied bot-secret",
+    });
+    setTelegramProcessRunnerForTesting(runner);
+
+    const result = runCli(["backup", "local-demo", "--config", configPath]);
+
+    expect(result.exitCode).toBe(exitCodes.runtimeFailure);
+    expect(result.stderr).toContain(
+      "Backup failed for local-demo during backup"
+    );
+    expect(result.stderr).toContain(
+      "Missing required environment variable MISSING_AGE_RECIPIENT"
+    );
+    expect(result.stderr).toContain(
+      "Telegram failure notification failed: telegram denied [REDACTED]"
+    );
+    expect(result.stderr).not.toContain("bot-secret");
   });
 
   it("rejects prune for unsupported external storage targets", () => {
