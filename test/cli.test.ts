@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -169,6 +169,54 @@ describe("cli harness baseline", () => {
       command: "backup",
       targets: ["maintana"],
     });
+  });
+
+  it("validates production install layout through doctor", () => {
+    const installDir = mkdtempSync(
+      path.join(tmpdir(), "ops-backup-runner-install-")
+    );
+    mkdirSync(path.join(installDir, "dist"), { recursive: true });
+    mkdirSync(path.join(installDir, "config"), { recursive: true });
+    mkdirSync(path.join(installDir, "secrets"), { recursive: true });
+    writeFileSync(path.join(installDir, "dist", "cli.js"), "", "utf8");
+    writeFileSync(path.join(installDir, "config", "targets.yaml"), "", "utf8");
+    writeFileSync(path.join(installDir, ".env"), "", "utf8");
+    const configPath = writeConfig(localConfig(installDir));
+
+    const result = runCli([
+      "doctor",
+      "--config",
+      configPath,
+      "--install-dir",
+      installDir,
+    ]);
+
+    expect(result.exitCode).toBe(exitCodes.success);
+    expect(result.stdout).toContain("Doctor passed.");
+    expect(result.stdout).toContain(`- install: ${installDir}`);
+  });
+
+  it("fails doctor when production install layout is incomplete", () => {
+    const installDir = mkdtempSync(
+      path.join(tmpdir(), "ops-backup-runner-install-")
+    );
+    const configPath = writeConfig(localConfig(installDir));
+
+    const result = runCli([
+      "doctor",
+      "--config",
+      configPath,
+      "--install-dir",
+      installDir,
+    ]);
+
+    expect(result.exitCode).toBe(exitCodes.usage);
+    expect(result.stderr).toContain("Missing install path: dist/cli.js");
+    expect(result.stderr).toContain(
+      "Missing install path: config/targets.yaml"
+    );
+    expect(result.stderr).toContain("Missing install path: secrets");
+    expect(result.stderr).toContain("Missing install path: .env");
   });
 
   it("rejects real backup execution for unsupported storage adapters", () => {

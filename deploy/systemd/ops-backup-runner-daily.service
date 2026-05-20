@@ -1,0 +1,18 @@
+[Unit]
+Description=Ops Backup Runner daily backup
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/orymu/ops-backup-runner
+EnvironmentFile=/opt/orymu/ops-backup-runner/.env
+ExecStart=/usr/bin/node /opt/orymu/ops-backup-runner/dist/cli.js backup all --config /opt/orymu/ops-backup-runner/config/targets.yaml
+ExecStartPost=-/usr/bin/node /opt/orymu/ops-backup-runner/dist/cli.js prune all --config /opt/orymu/ops-backup-runner/config/targets.yaml
+User=ops-backup
+Group=ops-backup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/opt/orymu/ops-backup-runner

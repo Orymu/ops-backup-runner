@@ -697,6 +697,8 @@ Result:
 
 ## Phase 11 — Systemd Install Assets
 
+Status: Done on 20 May 2026.
+
 Goal: make server installation repeatable.
 
 Tasks:
@@ -727,6 +729,23 @@ Acceptance criteria:
 - Systemd files use `EnvironmentFile`.
 - `Persistent=true` is documented for timers.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- daily, weekly, and monthly systemd service/timer templates are available under `deploy/systemd`;
+- all services load `/opt/orymu/ops-backup-runner/.env` through `EnvironmentFile`;
+- all timers use `Persistent=true`;
+- prune is run as a non-blocking `ExecStartPost` so prune failure does not hide a successful backup run;
+- production env placeholders are documented in `.env.example` and `deploy/.env.production.example`;
+- `docs/deployment/systemd-install.md` documents install path, permissions, timer activation, and manual runtime checks;
+- `doctor --install-dir <path>` validates the expected production directory layout;
+- tests cover complete and incomplete install layout validation.
 
 ## Phase 12 — Maintana Production Rollout
 

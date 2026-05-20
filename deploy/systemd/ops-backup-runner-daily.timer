@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Ops Backup Runner daily
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+Unit=ops-backup-runner-daily.service
+
+[Install]
+WantedBy=timers.target

@@ -85,9 +85,9 @@ const renderGlobalHelp = (): string =>
 const renderCommandHelp = (command: string): string => {
   const helpByCommand: Record<string, string[]> = {
     doctor: [
-      "Usage: ops-backup-runner doctor --config <path> [--json]",
+      "Usage: ops-backup-runner doctor --config <path> [--install-dir <path>] [--json]",
       "",
-      "Validates config shape and required runtime environment.",
+      "Validates config shape, required runtime environment, and optional install layout.",
     ],
     backup: [
       "Usage: ops-backup-runner backup <target|all> --config <path> [--dry-run] [--json]",
@@ -385,6 +385,7 @@ const formatBackupFailure = (params: {
 
 const runDoctorCommand = (args: string[]): CliResult => {
   const configPath = getFlagValue(args, "--config");
+  const installDir = getFlagValue(args, "--install-dir");
   const json = hasFlag(args, "--json");
 
   if (configPath === undefined) {
@@ -394,7 +395,10 @@ const runDoctorCommand = (args: string[]): CliResult => {
       : failure(exitCodes.usage, message);
   }
 
-  const result = runDoctor(configPath);
+  const result = runDoctor(
+    configPath,
+    installDir === undefined ? {} : { installDir }
+  );
   if (json) {
     return result.ok
       ? success(
@@ -402,6 +406,7 @@ const runDoctorCommand = (args: string[]): CliResult => {
             ok: true,
             targets: result.targets,
             config: result.redactedConfig,
+            install: result.install,
           })
         )
       : failure(

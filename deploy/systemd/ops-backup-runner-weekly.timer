@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Ops Backup Runner weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 02:45:00
+Persistent=true
+Unit=ops-backup-runner-weekly.service
+
+[Install]
+WantedBy=timers.target
