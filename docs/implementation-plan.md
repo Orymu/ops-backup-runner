@@ -61,6 +61,8 @@ Commit only after the relevant verification command passes.
 
 ## Phase 0 — Repo Hygiene And Decision Lock
 
+Status: Done on 18 May 2026.
+
 Goal: make sure we are building the right thing before scaffolding.
 
 Tasks:
@@ -77,7 +79,20 @@ Acceptance criteria:
 - Open questions for MVP are answered.
 - No code implementation starts before the MVP boundary is clear.
 
+Decision lock:
+
+- First supported production target: PostgreSQL running in Docker.
+- First external storage target: S3-compatible object storage, specifically Cloudflare R2.
+- Storage configuration remains per target, so one Cloudflare account with multiple buckets and separate Cloudflare accounts per project are both supported.
+- Encryption default: `age`; production database backups must be encrypted before external upload.
+- First notification channel: Telegram.
+- Installation model: standalone runner installed on the target VPS, not an app dependency inside Maintana, Orymu backend, Kevly, or future projects.
+- First rollout target: Maintana production.
+- Product boundary: Phase 2 starts with typed configuration and `doctor`; no real backup side effects are introduced before the config foundation is validated.
+
 ## Phase 1 — Project Harness
+
+Status: Done on 18 May 2026.
 
 Goal: create a strict engineering harness before implementation.
 
@@ -132,7 +147,52 @@ Acceptance criteria:
 - Repo has no production logic yet.
 - README points to proposal and implementation plan.
 
+### Phase 1 Harness Smoke Evidence
+
+Status: Passed on 18 May 2026.
+
+Verification executed:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- format, lint, type-check, tests, and build passed;
+- architecture harness passed;
+- source hygiene harness passed;
+- docs harness passed;
+- env harness passed;
+- project-map harness passed;
+- security harness passed;
+- commit message harness passed.
+
+Negative smoke tests executed:
+
+```bash
+pnpm harness:commit -- --message "bad commit message"
+```
+
+Expected failure confirmed:
+
+- invalid commit message was rejected with the required `type(scope): message` format and allowed commit types.
+
+Temporary architecture violation created locally:
+
+```text
+src/core/harness-smoke.ts -> src/storage/harness-smoke.ts
+```
+
+Expected failure confirmed:
+
+- architecture harness rejected `src/core/**` importing runtime adapter code from `src/storage/**`.
+
+The temporary smoke files were removed after the negative test, and the clean gate passed again. The harness is ready to guard Phase 2 product implementation.
+
 ## Phase 2 — Config Foundation
+
+Status: Done on 18 May 2026.
 
 Goal: build typed, validated configuration before any backup behavior.
 
@@ -171,7 +231,26 @@ Acceptance criteria:
 - Secrets are redacted in all printed config/debug output.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+node dist/cli.js doctor --config config/targets.example.yaml
+```
+
+Result:
+
+- strict YAML config loading is implemented;
+- Zod schema rejects invalid config shape and duplicate target ids;
+- env reference resolution reports missing required values for enabled targets;
+- disabled targets can validate without production secrets;
+- config preview redaction masks secret-shaped keys;
+- `doctor` validates config shape without running backup side effects;
+- example config validates as a disabled Maintana target.
+
 ## Phase 3 — CLI Foundation
+
+Status: Done on 18 May 2026.
 
 Goal: create stable command interfaces with no real backup side effects yet.
 
@@ -206,7 +285,28 @@ Acceptance criteria:
 - `backup all --dry-run` lists enabled targets without executing dump/upload.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+node dist/cli.js backup all --dry-run --config config/targets.example.yaml
+node dist/cli.js backup unknown --dry-run --config config/targets.example.yaml
+node dist/cli.js restore --help
+```
+
+Result:
+
+- command parser is testable through `runCli(args)`;
+- `doctor`, `backup`, `list`, `verify`, `restore`, and `prune` have help output;
+- shared `--config` and `--json` handling exists;
+- `backup all --dry-run` validates target selection without dump/upload/prune/notification side effects;
+- unknown target returns usage exit code `2` with a clear message;
+- non-dry-run backup returns runtime exit code `1` until Phase 4 implements the local pipeline;
+- placeholder target commands validate target selection and explicitly report that no backup side effects were executed.
+
 ## Phase 4 — Local Backup Pipeline
+
+Status: Done on 18 May 2026.
 
 Goal: prove the core pipeline with fake dumper and local storage.
 
@@ -242,7 +342,27 @@ Acceptance criteria:
 - Temp files are cleaned after success and failure.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `fake` dumper config is supported for local/dev backup targets;
+- `local` storage config is supported for local/dev artifact storage;
+- backup pipeline writes `fake dump -> gzip -> local artifact -> manifest`;
+- manifest includes target id, created time, artifact key, size, sha256, compression, encryption, and storage metadata;
+- `list` reads local manifests;
+- `verify --latest` checks local artifact sha256 against the manifest;
+- `restore` gunzips the stored artifact into the requested output file;
+- temp workspace cleanup is handled in the backup job finalizer;
+- real PostgreSQL, S3/R2, age encryption, retention pruning, and notifications remain intentionally outside Phase 4.
+
 ## Phase 5 — PostgreSQL Docker Dumper
+
+Status: Done on 18 May 2026.
 
 Goal: back up Dockerized PostgreSQL databases.
 
@@ -282,7 +402,31 @@ Acceptance criteria:
 - No plaintext dump is left behind after backup.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `postgresDocker` dumper is implemented behind the shared dumper port;
+- safe `docker exec ... pg_dump` argument construction is unit tested;
+- optional `dockerBinary` and `pgRestoreBinary` are supported in config;
+- optional `passwordEnv` is passed to Docker as `--env PGPASSWORD` without putting the secret value in command arguments;
+- dump stdout is captured as bytes and passed into the existing gzip/local backup pipeline;
+- `pg_restore --list` validates the custom dump from stdin before the artifact is accepted;
+- docker failures and invalid dump verification failures produce clear target-specific errors;
+- doctor checks validate docker binary availability, container existence, and `pg_dump --version` inside the container for enabled `postgresDocker` targets;
+- no plaintext dump file is written by the dumper or backup job.
+
+Integration note:
+
+- Disposable Postgres container coverage was not added in this phase because the unit suite uses mocked process runners and must stay stable without Docker availability in CI. A real-container test can be added later behind an explicit integration-test command.
+
 ## Phase 6 — S3/R2 Storage Adapter
+
+Status: Done on 18 May 2026.
 
 Goal: support Cloudflare R2 and generic S3-compatible storage.
 
@@ -318,7 +462,27 @@ Acceptance criteria:
 - `doctor` can validate storage config without printing secrets.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- S3-compatible storage adapter is implemented with AWS SDK v3;
+- adapter supports upload, head, list-by-prefix, download, and delete operations;
+- artifact upload verifies object size with `HeadObject`;
+- manifest upload verifies object size with `HeadObject`;
+- object metadata includes target id, backup id, created time, and sha256 where relevant;
+- key generation supports per-target prefixes for shared buckets;
+- config already supports per-target endpoint, bucket, prefix, and credential env references;
+- doctor validates missing S3 credential env references through the existing env resolution path without printing secret values;
+- tests use a mocked S3 client and do not require real Cloudflare R2 credentials.
+
 ## Phase 7 — Age Encryption
+
+Status: Done on 18 May 2026.
 
 Goal: encrypt backups before external upload.
 
@@ -359,7 +523,29 @@ Acceptance criteria:
 - `none` encryption is blocked for production external storage.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- encryption is modeled as a core pipeline port;
+- `none` encryption is implemented for local/dev use;
+- `age` encryption adapter is implemented with a process runner and mocked tests;
+- backup pipeline now applies encryption after gzip and before storage;
+- restore path decrypts before gunzip;
+- age recipient is resolved from env for backup encryption;
+- age identity path is resolved from env for restore decryption;
+- missing identity fails clearly before restore can proceed;
+- external storage with `encryption: none` is blocked unless `allowUnsafeExternal: true` is explicitly set;
+- external-storage encryption guard is included in doctor validation;
+- tests cover encrypted artifact storage, restore decrypt path, age command arguments, missing identity failure, and unsafe external storage guard.
+
 ## Phase 8 — Retention Engine
+
+Status: Done on 19 May 2026.
 
 Goal: remove old backups safely.
 
@@ -395,7 +581,26 @@ Acceptance criteria:
 - Prune failure does not mark backup upload as failed if backup already succeeded.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- retention policy now supports daily, weekly, monthly, max-age, and manual keep rules;
+- local storage can list object keys and delete specific keys for prune execution;
+- retention planner keeps selected manifest-backed backups and plans only expired artifact/manifest pairs for deletion;
+- unknown objects are reported in prune output and are never deleted;
+- `prune --dry-run` prints intended deletions without deleting files;
+- `prune` execution deletes only manifest-backed artifact and manifest pairs;
+- unsupported external storage targets fail clearly instead of pruning blindly;
+- tests cover planner edge cases, dry-run safety, execution deletion safety, and unsupported storage behavior.
+
 ## Phase 9 — Verification Commands
+
+Status: Done on 19 May 2026.
 
 Goal: make restore confidence operationally visible.
 
@@ -421,7 +626,26 @@ Acceptance criteria:
 - Corrupted artifact fails checksum or restore-list verification.
 - `pnpm verify` passes.
 
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- `verify --latest` now fails clearly when no backups exist;
+- verification checks artifact checksum against the manifest;
+- verification decrypts and decompresses the artifact before declaring success;
+- PostgreSQL Docker targets run `pg_restore --list <dump-file>` against a temporary restored dump;
+- temporary restore-list files are cleaned up after verification;
+- corrupted artifacts fail verification before restore-list execution;
+- invalid PostgreSQL dump content fails restore-list verification;
+- tests cover empty targets, checksum mismatch, restore-list success, restore-list failure, and existing backup/list/restore flow.
+
 ## Phase 10 — Notifications
+
+Status: Done on 19 May 2026.
 
 Goal: alert operators when backup fails.
 
@@ -453,6 +677,23 @@ Acceptance criteria:
 - Missing Telegram config fails `doctor` if notifications are enabled.
 - Notification failure is logged but does not hide the original backup failure.
 - `pnpm verify` passes.
+
+Verification evidence:
+
+```bash
+pnpm verify
+```
+
+Result:
+
+- notification core contracts are defined for backup failure alerts;
+- Telegram notification config supports failure notifications by default, optional success notifications, and weekly/monthly success cadence settings;
+- `doctor` fails clearly when Telegram notifications are enabled without required env references or runtime env values;
+- Telegram sendMessage details are isolated in the notification adapter;
+- backup failures trigger Telegram alerts when configured;
+- Telegram delivery failures are reported alongside the original backup failure without replacing it;
+- failure messages redact token/secret-shaped values before output;
+- tests cover config validation, message formatting, Telegram request construction, delivery failure redaction, backup failure alerting, and notification failure handling.
 
 ## Phase 11 — Systemd Install Assets
 

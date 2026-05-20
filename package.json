@@ -16,10 +16,17 @@
     "build": "tsc -p tsconfig.build.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "harness:architecture": "node tool/check-architecture.mjs",
+    "harness:commit": "node tool/check-commit-message.mjs",
+    "harness:docs": "node tool/check-docs.mjs",
+    "harness:env": "node tool/check-env-example.mjs",
+    "harness:project-map": "node tool/check-project-map.mjs",
+    "harness:security": "node tool/check-security.mjs",
+    "harness:source": "node tool/check-source-hygiene.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "type-check": "tsc --noEmit",
-    "verify": "pnpm format:check && pnpm lint && pnpm type-check && pnpm test && pnpm build"
+    "verify": "node tool/verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -29,5 +36,10 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.48.0",
     "vitest": "^4.1.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1048.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   }
 }

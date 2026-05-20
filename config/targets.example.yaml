@@ -1,0 +1,42 @@
+version: 1
+
+defaults:
+  encryption:
+    type: age
+    recipientEnv: BACKUP_AGE_RECIPIENT
+  retention:
+    keepDaily: 7
+    keepWeekly: 4
+    keepMonthly: 3
+  notifications:
+    telegram:
+      enabled: true
+      onFailure: true
+      onSuccess: false
+      successCadence: weekly
+      botTokenEnv: BACKUP_TELEGRAM_BOT_TOKEN
+      chatIdEnv: BACKUP_TELEGRAM_CHAT_ID
+
+targets:
+  - id: maintana
+    enabled: false
+    description: Maintana production PostgreSQL database in Docker.
+    dumper:
+      type: postgresDocker
+      container: maintana-postgres
+      database: maintana
+      username: maintana
+      passwordEnv: MAINTANA_POSTGRES_PASSWORD
+      format: custom
+    storage:
+      type: s3
+      endpoint: https://example-account-id.r2.cloudflarestorage.com
+      region: auto
+      bucket: maintana-backups
+      prefix: production/postgres
+      accessKeyIdEnv: MAINTANA_BACKUP_R2_ACCESS_KEY_ID
+      secretAccessKeyEnv: MAINTANA_BACKUP_R2_SECRET_ACCESS_KEY
+    retention:
+      keepDaily: 14
+      keepWeekly: 8
+      keepMonthly: 6

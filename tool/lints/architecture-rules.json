@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "name": "core-must-not-import-commands",
+      "from": "src/core/**",
+      "disallow": ["src/commands/**"]
+    },
+    {
+      "name": "core-must-not-import-adapters",
+      "from": "src/core/**",
+      "disallow": [
+        "src/dumpers/**",
+        "src/encryption/**",
+        "src/notifications/**",
+        "src/storage/**"
+      ]
+    },
+    {
+      "name": "config-must-not-import-commands",
+      "from": "src/config/**",
+      "disallow": ["src/commands/**"]
+    },
+    {
+      "name": "dumpers-must-not-import-storage",
+      "from": "src/dumpers/**",
+      "disallow": ["src/storage/**"]
+    },
+    {
+      "name": "storage-must-not-import-dumpers",
+      "from": "src/storage/**",
+      "disallow": ["src/dumpers/**"]
+    },
+    {
+      "name": "encryption-must-not-import-storage-or-dumpers",
+      "from": "src/encryption/**",
+      "disallow": ["src/dumpers/**", "src/storage/**"]
+    },
+    {
+      "name": "notifications-must-not-import-runtime-adapters",
+      "from": "src/notifications/**",
+      "disallow": ["src/dumpers/**", "src/encryption/**", "src/storage/**"]
+    }
+  ]
+}
