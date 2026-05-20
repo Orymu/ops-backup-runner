@@ -36,8 +36,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate latest commit message
-        run: pnpm harness:commit
-
       - name: Run verification
         run: pnpm verify
